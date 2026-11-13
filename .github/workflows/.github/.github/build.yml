@@ -1,0 +1,60 @@
+Name: Build Yigit Adventure APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get game files
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Prepare Android project
+        run: |
+          npm init -y
+          npm install @capacitor/core@6.2.1 @capacitor/android@6.2.1
+          npm install --save-dev @capacitor/cli@6.2.1
+          mkdir -p www
+          cp index.html www/index.html
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.yigit.adventure",
+            "appName": "Yigit Adventure",
+            "webDir": "www"
+          }
+          EOF
+          npx cap add android
+          npx cap sync android
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yigit-Adventure-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
