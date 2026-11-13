@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Yigit Adventure 2.0 - 10 Bölüm Edition</title>
+<style>
+*{box-sizing:border-box;user-select:none;-webkit-user-select:none}
+body{margin:0;background:#0d111a;overflow:hidden;font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif}
+canvas{display:block;width:100vw;height:100vh;touch-action:none;cursor:pointer}
+
+.screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:linear-gradient(135deg, #101827 0%, #1f293d 100%);z-index:20;padding:25px 20px;text-align:center;overflow-y:auto}
+#startScreen{justify-content:center}
+.hidden{display:none !important}
+.game-title{font-size:clamp(28px, 6vw, 54px);font-weight:900;color:#f1c40f;text-shadow:0 5px 0 #d35400, 0 10px 25px rgba(0,0,0,0.6);margin:0 0 6px 0;letter-spacing:2px}
+.subtitle{color:#94a3b8;font-size:clamp(13px, 2.5vw, 17px);margin-bottom:20px}
+
+.main-btn{padding:15px 42px;font-size:20px;font-weight:bold;color:white;background:linear-gradient(to bottom, #2ecc71, #27ae60);border:none;border-radius:50px;box-shadow:0 6px 0 #1e8449, 0 10px 20px rgba(0,0,0,0.4);cursor:pointer;transition:transform 0.1s, filter 0.2s}
+.main-btn:hover{filter:brightness(1.1)}
+.main-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #1e8449}
+
+.levels-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(175px, 1fr));gap:12px;width:100%;max-width:950px;margin:10px 0;padding-bottom:20px}
+.level-card{background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.15);border-radius:16px;padding:15px;color:white;cursor:pointer;transition:all 0.2s;backdrop-filter:blur(6px);position:relative;overflow:hidden}
+.level-card:hover:not(.locked){transform:translateY(-4px);border-color:#f1c40f;background:rgba(255,255,255,0.12)}
+.level-card.locked{opacity:0.4;cursor:not-allowed;border-color:rgba(255,255,255,0.03)}
+.level-card h3{margin:0 0 4px 0;font-size:17px;color:#f1c40f}
+.level-card p{margin:0 0 10px 0;font-size:11px;color:#cbd5e1}
+.badge{display:inline-block;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:bold}
+.easy{background:#27ae60} .medium{background:#e67e22} .hard{background:#c0392b} .expert{background:#8e44ad} .master{background:#e74c3c}
+
+.back-btn{margin:10px 0 25px 0;padding:10px 25px;background:transparent;border:2px solid #64748b;color:#cbd5e1;border-radius:20px;font-size:14px;cursor:pointer;flex-shrink:0}
+.back-btn:hover{background:rgba(255,255,255,0.1)}
+
+.hud-btn{position:fixed;top:15px;right:15px;z-index:15;padding:8px 15px;background:rgba(0,0,0,0.5);border:2px solid rgba(255,255,255,0.3);color:white;border-radius:12px;font-weight:bold;font-size:13px;cursor:pointer;backdrop-filter:blur(4px)}
+
+.controls{position:fixed;bottom:25px;left:20px;right:20px;display:flex;justify-content:space-between;align-items:flex-end;pointer-events:none;z-index:10}
+.btn-group-left{display:flex;gap:18px;pointer-events:auto}
+.btn-group-right{display:flex;pointer-events:auto}
+.btn{width:75px;height:75px;border-radius:50%;background:rgba(255,255,255,0.22);border:2px solid rgba(255,255,255,0.5);color:white;font-size:28px;font-weight:bold;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);box-shadow:0 6px 20px rgba(0,0,0,0.4);cursor:pointer}
+.btn:active{background:rgba(255,255,255,0.45);transform:scale(0.93)}
+@media (min-width: 1024px) {
+  .controls { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen">
+  <h1 class="game-title">YIGIT ADVENTURE 2.0</h1>
+  <p class="subtitle">10 efsanevi dünya, zorlu engeller ve büyük macera!</p>
+  <button class="main-btn" onclick="openLevelSelect()">▶ OYNA</button>
+  <p id="menuHighScore" style="margin-top:20px;color:#f1c40f;font-weight:bold;font-size:15px;"></p>
+</div>
+
+<div id="levelScreen" class="screen hidden">
+  <h2 class="game-title" style="font-size:28px">BÖLÜM SEÇ (1 - 10)</h2>
+  <p class="subtitle">Maceraya devam etmek için dünya seç</p>
+  <div class="levels-grid" id="levelsGrid"></div>
+  <button class="back-btn" onclick="showStartScreen()">← Ana Menü</button>
+</div>
+
+<button id="hudMenuBtn" class="hud-btn hidden" onclick="openLevelSelect()">☰ BÖLÜMLER</button>
+<canvas id="game"></canvas>
+
+<div id="touchControls" class="controls hidden">
+  <div class="btn-group-left">
+    <div class="btn" id="btnLeft">◀</div>
+    <div class="btn" id="btnRight">▶</div>
+  </div>
+  <div class="btn-group-right">
+    <div class="btn" id="btnJump">▲</div>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+let W,H,scale=1;
+
+function resize(){
+  W=canvas.width = window.innerWidth || 800;
+  H=canvas.height = window.innerHeight || 450;
+  scale = Math.max(0.75, H / 520);
+}
+window.addEventListener("resize", resize);
+resize();
+
+let audioCtx = null;
+function playSound(freq,type,dur){
+  try {
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.type=type;
+    osc.frequency.setValueAtTime(freq,audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq*0.3,audioCtx.currentTime+dur);
+    gain.gain.setValueAtTime(0.08,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    osc.connect(gain);gain.connect(audioCtx.destination);
+    osc.start();osc.stop(audioCtx.currentTime+dur);
+  } catch(e){}
+}
+
+let highScore = 0;
+let unlockedLevel = 0;
+try {
+  highScore = parseInt(localStorage.getItem("yigit_highscore")) || 0;
+  unlockedLevel = parseInt(localStorage.getItem("yigit_unlocked")) || 0;
+} catch(e){}
+
+function saveData(){
+  try {
+    localStorage.setItem("yigit_highscore", highScore);
+    localStorage.setItem("yigit_unlocked", unlockedLevel);
+  } catch(e){}
+}
+
+// 10 BÖLÜM TANIMI
+const LEVELS = [
+  {
+    name: "1. Yeşil Vadi", badge: "KOLAY", type: "easy", dark: false,
+    sky: ["#2980b9", "#6dd5fa", "#ffffff"], sun: "#f1c40f", hills: ["#27ae60", "#2ecc71"],
+    groundTop: "#27ae60", groundBody: "#8d4004", goalX: 2950, enemySpeed: 1.2,
+    platforms: [
+      {x:0,y:430,w:750,h:150}, {x:850,y:430,w:600,h:150}, {x:1550,y:430,w:700,h:150}, {x:2350,y:430,w:850,h:150},
+      {x:360,y:330,w:140,h:20}, {x:680,y:260,w:140,h:20}, {x:1050,y:330,w:150,h:20}, {x:1320,y:270,w:150,h:20},
+      {x:1750,y:330,w:150,h:20}, {x:2050,y:250,w:150,h:20}, {x:2550,y:330,w:150,h:20}
+    ],
+    enemies: [{x:550,min:500,max:720}, {x:1200,min:1100,max:1350}, {x:1900,min:1800,max:2150}, {x:2650,min:2450,max:2850}]
+  },
+  {
+    name: "2. Kızıl Kanyon", badge: "KOLAY+", type: "easy", dark: false,
+    sky: ["#c0392b", "#e67e22", "#f9e79f"], sun: "#ff5733", hills: ["#a04000", "#ba4a00"],
+    groundTop: "#d35400", groundBody: "#5d2906", goalX: 3350, enemySpeed: 1.5,
+    platforms: [
+      {x:0,y:430,w:500,h:150}, {x:620,y:380,w:220,h:200}, {x:960,y:330,w:200,h:250}, {x:1280,y:430,w:550,h:150},
+      {x:1950,y:360,w:160,h:20}, {x:2200,y:290,w:160,h:20}, {x:2460,y:230,w:160,h:20}, {x:2720,y:430,w:800,h:150},
+      {x:1450,y:310,w:130,h:20}, {x:2950,y:320,w:140,h:20}
+    ],
+    enemies: [{x:350,min:250,max:460}, {x:1450,min:1320,max:1750}, {x:1650,min:1320,max:1750}, {x:2900,min:2760,max:3250}, {x:3150,min:2760,max:3250}]
+  },
+  {
+    name: "3. Altın Çöl", badge: "ORTA", type: "medium", dark: false,
+    sky: ["#f39c12", "#f7dc6f", "#fef9e7"], sun: "#ffffff", hills: ["#d68910", "#f1c40f"],
+    groundTop: "#f4d03f", groundBody: "#b7950b", goalX: 3600, enemySpeed: 1.7,
+    platforms: [
+      {x:0,y:430,w:480,h:150}, {x:600,y:350,w:150,h:20}, {x:850,y:280,w:150,h:20}, {x:1100,y:430,w:520,h:150},
+      {x:1740,y:350,w:140,h:20}, {x:2000,y:280,w:140,h:20}, {x:2260,y:210,w:140,h:20}, {x:2520,y:430,w:600,h:150},
+      {x:3240,y:340,w:140,h:20}, {x:3450,y:430,w:400,h:150}
+    ],
+    enemies: [{x:300,min:200,max:440}, {x:1300,min:1150,max:1580}, {x:2700,min:2560,max:3050}, {x:2950,min:2560,max:3050}]
+  },
+  {
+    name: "4. Gece Kalesi", badge: "ORTA+", type: "medium", dark: true,
+    sky: ["#0b0c10", "#1f2833", "#2c3e50"], sun: "#ecf0f1", hills: ["#17202a", "#212f3d"],
+    groundTop: "#566573", groundBody: "#1c2833", goalX: 3750, enemySpeed: 1.9,
+    platforms: [
+      {x:0,y:430,w:420,h:150}, {x:540,y:360,w:130,h:20}, {x:780,y:290,w:130,h:20}, {x:1020,y:230,w:130,h:20},
+      {x:1260,y:430,w:480,h:150}, {x:1860,y:370,w:140,h:20}, {x:2120,y:310,w:140,h:20}, {x:2380,y:430,w:520,h:150},
+      {x:3020,y:350,w:130,h:20}, {x:3260,y:280,w:130,h:20}, {x:3480,y:430,w:450,h:150}
+    ],
+    enemies: [{x:300,min:200,max:390}, {x:1400,min:1280,max:1680}, {x:1600,min:1280,max:1680}, {x:2500,min:2400,max:2840}, {x:2750,min:2400,max:2840}, {x:3600,min:3500,max:3700}]
+  },
+  {
+    name: "5. Buz Diyarı", badge: "ZOR", type: "hard", dark: false,
+    sky: ["#1b4f72", "#5499c7", "#ebf5fb"], sun: "#a9cce3", hills: ["#2980b9", "#3498db"],
+    groundTop: "#a9cce3", groundBody: "#154360", goalX: 4100, enemySpeed: 2.1,
+    platforms: [
+      {x:0,y:430,w:380,h:150}, {x:500,y:350,w:120,h:20}, {x:720,y:280,w:120,h:20}, {x:950,y:210,w:120,h:20},
+      {x:1180,y:430,w:420,h:150}, {x:1700,y:340,w:130,h:20}, {x:1940,y:270,w:130,h:20}, {x:2180,y:430,w:460,h:150},
+      {x:2750,y:340,w:130,h:20}, {x:3000,y:260,w:130,h:20}, {x:3250,y:430,w:950,h:150}
+    ],
+    enemies: [{x:250,min:180,max:350}, {x:1300,min:1200,max:1550}, {x:2300,min:2220,max:2550}, {x:3400,min:3300,max:3600}, {x:3700,min:3600,max:4000}]
+  },
+  {
+    name: "6. Gizemli Orman", badge: "ZOR", type: "hard", dark: true,
+    sky: ["#0e3b2e", "#196f3d", "#52be80"], sun: "#abebc6", hills: ["#145a32", "#1e8449"],
+    groundTop: "#2ecc71", groundBody: "#3e2723", goalX: 4300, enemySpeed: 2.3,
+    platforms: [
+      {x:0,y:430,w:360,h:150}, {x:480,y:350,w:115,h:20}, {x:700,y:270,w:115,h:20}, {x:920,y:190,w:115,h:20},
+      {x:1150,y:430,w:400,h:150}, {x:1660,y:340,w:120,h:20}, {x:1900,y:260,w:120,h:20}, {x:2150,y:430,w:440,h:150},
+      {x:2700,y:340,w:120,h:20}, {x:2950,y:260,w:120,h:20}, {x:3200,y:190,w:120,h:20}, {x:3450,y:430,w:950,h:150}
+    ],
+    enemies: [{x:220,min:160,max:330}, {x:1250,min:1180,max:1500}, {x:2250,min:2180,max:2520}, {x:3600,min:3500,max:3900}, {x:3950,min:3800,max:4200}]
+  },
+  {
+    name: "7. Gökyüzü Adaları", badge: "UZMAN", type: "expert", dark: false,
+    sky: ["#5dade2", "#aed6f1", "#ffffff"], sun: "#f9e79f", hills: ["#85c1e9", "#d6eaf8"],
+    groundTop: "#58d68d", groundBody: "#d4ac0d", goalX: 4500, enemySpeed: 2.4,
+    platforms: [
+      {x:0,y:430,w:350,h:150}, {x:460,y:360,w:110,h:20}, {x:670,y:290,w:110,h:20}, {x:880,y:220,w:110,h:20},
+      {x:1100,y:320,w:120,h:20}, {x:1330,y:430,w:380,h:150}, {x:1820,y:340,w:110,h:20}, {x:2040,y:260,w:110,h:20},
+      {x:2260,y:190,w:110,h:20}, {x:2500,y:430,w:400,h:150}, {x:3020,y:330,w:115,h:20}, {x:3250,y:250,w:115,h:20},
+      {x:3500,y:430,w:1100,h:150}
+    ],
+    enemies: [{x:200,min:140,max:320}, {x:1450,min:1360,max:1660}, {x:2600,min:2520,max:2850}, {x:3650,min:3550,max:4000}, {x:4100,min:3950,max:4400}]
+  },
+  {
+    name: "8. Volkanik Mağara", badge: "UZMAN", type: "expert", dark: true,
+    sky: ["#4a235a", "#78281f", "#1b2631"], sun: "#e74c3c", hills: ["#641e16", "#78281f"],
+    groundTop: "#e74c3c", groundBody: "#422814", goalX: 4700, enemySpeed: 2.6,
+    platforms: [
+      {x:0,y:430,w:340,h:150}, {x:460,y:340,w:110,h:20}, {x:680,y:270,w:110,h:20}, {x:900,y:200,w:110,h:20},
+      {x:1120,y:430,w:380,h:150}, {x:1600,y:330,w:115,h:20}, {x:1830,y:260,w:115,h:20}, {x:2060,y:430,w:400,h:150},
+      {x:2560,y:330,w:115,h:20}, {x:2800,y:250,w:115,h:20}, {x:3040,y:430,w:380,h:150}, {x:3530,y:330,w:120,h:20},
+      {x:3780,y:430,w:1000,h:150}
+    ],
+    enemies: [{x:200,min:150,max:310}, {x:1200,min:1150,max:1460}, {x:2150,min:2100,max:2420}, {x:3150,min:3100,max:3380}, {x:3950,min:3820,max:4250}, {x:4350,min:4150,max:4600}]
+  },
+  {
+    name: "9. Kristal Zindan", badge: "USTA", type: "master", dark: true,
+    sky: ["#1a0033", "#4a148c", "#7b1fa2"], sun: "#e1bee7", hills: ["#311b92", "#4527a0"],
+    groundTop: "#ba68c8", groundBody: "#12005e", goalX: 4950, enemySpeed: 2.8,
+    platforms: [
+      {x:0,y:430,w:320,h:150}, {x:440,y:350,w:105,h:20}, {x:650,y:270,w:105,h:20}, {x:860,y:190,w:105,h:20},
+      {x:1080,y:430,w:360,h:150}, {x:1550,y:340,w:105,h:20}, {x:1770,y:260,w:105,h:20}, {x:1990,y:190,w:105,h:20},
+      {x:2210,y:430,w:380,h:150}, {x:2700,y:330,w:110,h:20}, {x:2930,y:250,w:110,h:20}, {x:3160,y:430,w:400,h:150},
+      {x:3680,y:330,w:110,h:20}, {x:3920,y:250,w:110,h:20}, {x:4160,y:430,w:900,h:150}
+    ],
+    enemies: [{x:180,min:130,max:290}, {x:1160,min:1100,max:1400}, {x:2300,min:2240,max:2540}, {x:3260,min:3200,max:3520}, {x:4300,min:4200,max:4600}, {x:4650,min:4450,max:4850}]
+  },
+  {
+    name: "10. Kralın Kalesi", badge: "FİNAL", type: "master", dark: true,
+    sky: ["#000000", "#2c0404", "#780606"], sun: "#f1c40f", hills: ["#3d0303", "#590505"],
+    groundTop: "#f1c40f", groundBody: "#212121", goalX: 5300, enemySpeed: 3.1,
+    platforms: [
+      {x:0,y:430,w:320,h:150}, {x:440,y:350,w:100,h:20}, {x:640,y:270,w:100,h:20}, {x:840,y:190,w:100,h:20},
+      {x:1060,y:430,w:350,h:150}, {x:1520,y:340,w:100,h:20}, {x:1730,y:260,w:100,h:20}, {x:1940,y:190,w:100,h:20},
+      {x:2160,y:430,w:360,h:150}, {x:2640,y:330,w:100,h:20}, {x:2860,y:250,w:100,h:20}, {x:3080,y:180,w:100,h:20},
+      {x:3300,y:430,w:380,h:150}, {x:3800,y:330,w:105,h:20}, {x:4020,y:250,w:105,h:20}, {x:4250,y:430,w:1150,h:150}
+    ],
+    enemies: [
+      {x:180,min:130,max:290}, {x:1140,min:1090,max:1370}, {x:2240,min:2190,max:2480},
+      {x:3380,min:3330,max:3640}, {x:4400,min:4280,max:4700}, {x:4750,min:4550,max:4950}, {x:5000,min:4800,max:5200}
+    ]
+  }
+];
+
+let gameState = "MENU";
+let currentLevelIdx = 0;
+let activeLevel = LEVELS[0];
+
+function showStartScreen(){
+  gameState = "MENU";
+  document.getElementById("startScreen").classList.remove("hidden");
+  document.getElementById("levelScreen").classList.add("hidden");
+  document.getElementById("hudMenuBtn").classList.add("hidden");
+  document.getElementById("touchControls").classList.add("hidden");
+  document.getElementById("menuHighScore").innerText = "🏆 En Yüksek Puan: " + highScore;
+}
+
+function openLevelSelect(){
+  gameState = "LEVEL_SELECT";
+  document.getElementById("startScreen").classList.add("hidden");
+  document.getElementById("levelScreen").classList.remove("hidden");
+  document.getElementById("hudMenuBtn").classList.add("hidden");
+  document.getElementById("touchControls").classList.add("hidden");
+  
+  let grid = document.getElementById("levelsGrid");
+  grid.innerHTML = "";
+  LEVELS.forEach((lvl, idx) => {
+    let isLocked = idx > unlockedLevel;
+    grid.innerHTML += `
+      <div class="level-card ${isLocked ? 'locked' : ''}" onclick="${isLocked ? '' : `startLevel(${idx})`}">
+        <h3>${lvl.name}</h3>
+        <p>${isLocked ? '🔒 Kilidi açmak için önceki bölümü bitir!' : 'Maceraya başla.'}</p>
+        <span class="badge ${lvl.type}">${lvl.badge}</span>
+      </div>
+    `;
+  });
+}
+
+function startLevel(idx){
+  currentLevelIdx = idx;
+  activeLevel = LEVELS[idx];
+  document.getElementById("startScreen").classList.add("hidden");
+  document.getElementById("levelScreen").classList.add("hidden");
+  document.getElementById("hudMenuBtn").classList.remove("hidden");
+  document.getElementById("touchControls").classList.remove("hidden");
+  gameState = "PLAYING";
+  resetGame();
+  playSound(440, "sine", 0.15);
+}
+
+const keys={};
+window.addEventListener("keydown",e=>{
+  keys[e.key.toLowerCase()]=true;
+  if([" ","arrowup","arrowleft","arrowright","w","a","d"].includes(e.key.toLowerCase()))e.preventDefault();
+  if(e.key==="Enter" && gameState==="PLAYING" && (gameOver||won)){
+    if(won && currentLevelIdx < LEVELS.length - 1) startLevel(currentLevelIdx + 1);
+    else resetGame();
+  }
+});
+window.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+let mouseControl={left:false,right:false,jump:false};
+canvas.addEventListener("mousedown",e=>{
+  if(gameState!=="PLAYING")return;
+  if(gameOver||won){
+    if(won && currentLevelIdx < LEVELS.length - 1) startLevel(currentLevelIdx + 1);
+    else resetGame();
+    return;
+  }
+  const rectBox = canvas.getBoundingClientRect();
+  const x = e.clientX - rectBox.left;
+  const y = e.clientY - rectBox.top;
+  if(y < canvas.clientHeight / 2){
+    mouseControl.jump = true;
+    setTimeout(()=>mouseControl.jump=false, 150);
+  }
+  if(x < canvas.clientWidth / 2) mouseControl.left = true;
+  else mouseControl.right = true;
+});
+canvas.addEventListener("mouseup",()=>{mouseControl.left=false;mouseControl.right=false;});
+
+function bindTouch(id,key){
+  const el=document.getElementById(id);
+  const start=e=>{
+    e.preventDefault();keys[key]=true;
+    if(gameState==="PLAYING" && (gameOver||won)){
+      if(won && currentLevelIdx < LEVELS.length - 1) startLevel(currentLevelIdx + 1);
+      else resetGame();
+    }
+  };
+  const end=e=>{e.preventDefault();keys[key]=false;};
+  if(el){
+    el.addEventListener("touchstart",start,{passive:false});
+    el.addEventListener("touchend",end,{passive:false});
+    el.addEventListener("mousedown",start);
+    el.addEventListener("mouseup",end);
+  }
+}
+bindTouch("btnLeft","arrowleft");
+bindTouch("btnRight","arrowright");
+bindTouch("btnJump"," ");
+
+let player = {x:100,y:100,vx:0,vy:0,w:32,h:48,onGround:false,dir:1,frame:0,invincible:0};
+let camera=0, score=0, lives=3, gameOver=false, won=false, coins=[], enemies=[], particles=[];
+const gravity=0.55;
+
+function addParticles(x,y,color,count=5){
+  for(let i=0;i<count;i++){
+    particles.push({
+      x,y, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.7)*3,
+      life:15+Math.random()*15, maxLife:30, color, size:2+Math.random()*3
+    });
+  }
+}
+
+function resetGame(){
+  player={x:100,y:100,vx:0,vy:0,w:32,h:48,onGround:false,dir:1,frame:0,invincible:0};
+  camera=0;score=0;lives=3;gameOver=false;won=false;
+  particles=[];
+  coins=[];
+  for(let x=250;x<activeLevel.goalX-100;x+=170){
+    coins.push({x,y:290-Math.sin(x)*35,taken:false});
+  }
+  enemies = activeLevel.enemies.map(e => ({
+    x: e.x, y: 398, min: e.min, max: e.max, dir: 1, alive: true
+  }));
+}
+
+function rect(x,y,w,h,c){
+  ctx.fillStyle=c;ctx.fillRect(x,y,w,h);
+}
+
+function drawBackground(){
+  let g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,activeLevel.sky[0]);
+  g.addColorStop(0.55,activeLevel.sky[1]);
+  g.addColorStop(1,activeLevel.sky[2]);
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  
+  ctx.fillStyle=activeLevel.sun;
+  ctx.beginPath();ctx.arc(W*.85,H*.18,40*scale,0,Math.PI*2);ctx.fill();
+  
+  if(activeLevel.dark){
+    ctx.fillStyle="rgba(255,255,255,0.85)";
+    for(let i=0;i<35;i++){
+      ctx.fillRect(((i*137)%W), ((i*73)%(H*0.5)), 2*scale, 2*scale);
+    }
+  } else {
+    for(let i=0;i<8;i++){
+      let x=((i*260-camera*.2)%(W+300)+W+300)%(W+300)-120;
+      let y=H*(.1+(i%3)*.08);
+      ctx.fillStyle="rgba(255,255,255,0.7)";
+      ctx.beginPath();
+      ctx.arc(x,y,25*scale,0,Math.PI*2);
+      ctx.arc(x+30*scale,y-12*scale,32*scale,0,Math.PI*2);
+      ctx.arc(x+62*scale,y,24*scale,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+  
+  for(let i=0;i<20;i++){
+    let x=i*300*scale-camera*.4;
+    ctx.fillStyle=i%2?activeLevel.hills[0]:activeLevel.hills[1];
+    ctx.beginPath();ctx.moveTo(x,H);ctx.lineTo(x+160*scale,H*.42);ctx.lineTo(x+320*scale,H);ctx.fill();
+  }
+}
+
+function drawPlayer(){
+  if(!player) return;
+  let x=player.x-camera,y=player.y;
+  let run=Math.abs(player.vx)>.5&&player.onGround;
+  let step=run?Math.sin(player.frame*.35)*5:0;
+  
+  if(player.invincible > 0 && Math.floor(player.invincible / 4) % 2 === 0) return;
+
+  ctx.save();
+  if(player.dir<0){ctx.translate(x+player.w,y);ctx.scale(-1,1);x=0;y=0}
+  
+  ctx.fillStyle="rgba(0,0,0,0.25)";ctx.beginPath();ctx.ellipse(x+16,y+46,14,4,0,0,Math.PI*2);ctx.fill();
+  rect(x+3,y+39+step,12,8,"#2c3e50");
+  rect(x+18,y+39-step,12,8,"#2c3e50");
+  rect(x+7,y+29+step,8,13,"#2980b9");
+  rect(x+19,y+29-step,8,13,"#2980b9");
+  rect(x+5,y+16,22,15,"#e74c3c");
+  rect(x+2,y+18,6,6,"#d35400");
+  rect(x+1,y+21-step,6,10,"#f39c12");
+  rect(x+27,y+21+step,6,10,"#f39c12");
+  rect(x+12,y+12,9,6,"#f39c12");
+  rect(x+6,y,20,16,"#f39c12");
+  rect(x+19,y+5,3,4,"#24202a");
+  rect(x+4,y-4,23,5,"#2e9c58");
+  rect(x+9,y-8,14,4,"#2e9c58");
+  ctx.restore();
+}
+
+function drawWorld(){
+  for(const p of activeLevel.platforms){
+    let x=p.x-camera;
+    if(x+p.w<0||x>W/scale)continue;
+    rect(x,p.y,p.w,p.h,activeLevel.groundBody);
+    rect(x,p.y,p.w,12,activeLevel.groundTop);
+    for(let a=0;a<p.w;a+=35)rect(x+a,p.y+16,22,4,"rgba(0,0,0,0.2)");
+  }
+  
+  let fx=activeLevel.goalX-camera;
+  rect(fx,260,8,170,"#bdc3c7");
+  ctx.fillStyle="#e74c3c";
+  ctx.beginPath();ctx.moveTo(fx+8,260);ctx.lineTo(fx+65,285);ctx.lineTo(fx+8,310);ctx.fill();
+
+  for(const c of coins){
+    if(c.taken)continue;
+    let x=c.x-camera;
+    let pulse=Math.sin(Date.now()*0.008)*3;
+    ctx.fillStyle="#f1c40f";
+    ctx.beginPath();ctx.ellipse(x,c.y+pulse,9,12,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#f39c12";
+    ctx.beginPath();ctx.ellipse(x,c.y+pulse,5,8,0,0,Math.PI*2);ctx.fill();
+  }
+  
+  for(const e of enemies){
+    if(!e.alive)continue;
+    let x=e.x-camera;
+    rect(x,e.y,30,25,"#c0392b");
+    rect(x+3,e.y-6,24,8,"#e74c3c");
+    rect(x+5,e.y+6,5,6,"white"); rect(x+7,e.y+8,2,3,"black");
+    rect(x+20,e.y+6,5,6,"white"); rect(x+22,e.y+8,2,3,"black");
+    rect(x+3,e.y+22,8,6,"#78281f");
+    rect(x+19,e.y+22,8,6,"#78281f");
+  }
+
+  for(let p of particles){
+    p.x+=p.vx; p.y+=p.vy; p.life--;
+    ctx.fillStyle=p.color;
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillRect(p.x-camera,p.y,p.size,p.size);
+    ctx.globalAlpha=1.0;
+  }
+  particles=particles.filter(p=>p.life>0);
+}
+
+function update(){
+  if(gameState!=="PLAYING" || gameOver || won)return;
+  if(player.invincible > 0) player.invincible--;
+
+  let left = keys["a"] || keys["arrowleft"] || mouseControl.left;
+  let right = keys["d"] || keys["arrowright"] || mouseControl.right;
+  let jump = keys[" "] || keys["w"] || keys["arrowup"] || mouseControl.jump;
+  
+  let targetVx=0;
+  if(left){targetVx=-3.8;player.dir=-1;}
+  if(right){targetVx=3.8;player.dir=1;}
+  player.vx+=(targetVx-player.vx)*0.25;
+
+  if(jump&&player.onGround){
+    player.vy=-12.5;
+    player.onGround=false;
+    playSound(300,"sine",0.12);
+    addParticles(player.x+16,player.y+48,"#ffffff",6);
+    mouseControl.jump=false;
+  }
+  
+  player.x+=player.vx;
+  if(player.x<0)player.x=0;
+  player.vy+=gravity;
+  let oldY=player.y;
+  player.y+=player.vy;
+  player.onGround=false;
+  
+  for(const p of activeLevel.platforms){
+    if(player.x+player.w>p.x&&player.x<p.x+p.w&&
+       oldY+player.h<=p.y+6&&player.y+player.h>=p.y&&player.vy>=0){
+      player.y=p.y-player.h;player.vy=0;player.onGround=true;
+    }
+  }
+  if(Math.abs(player.vx)>0.5&&player.onGround && Math.random()<0.3){
+    addParticles(player.x+16,player.y+48,activeLevel.groundTop,2);
+  }
+  player.frame++;
+  
+  for(const c of coins){
+    if(!c.taken&&Math.abs(player.x+16-c.x)<24&&Math.abs(player.y+20-c.y)<32){
+      c.taken=true;score+=10;
+      playSound(700,"triangle",0.08);
+      addParticles(c.x,c.y,"#f1c40f",8);
+    }
+  }
+  
+  for(const e of enemies){
+    if(!e.alive)continue;
+    e.x+=e.dir*activeLevel.enemySpeed;
+    if(e.x<e.min||e.x>e.max)e.dir*=-1;
+    if(player.x+player.w>e.x&&player.x<e.x+30&&player.y+player.h>e.y&&player.y<e.y+25){
+      if(player.vy>1&&player.y+player.h<e.y+16){
+        e.alive=false;player.vy=-8.5;score+=30;
+        playSound(180,"square",0.15);
+        addParticles(e.x+15,e.y+12,"#e74c3c",10);
+      }else if(player.invincible === 0){
+        lives--;
+        player.invincible = 60;
+        player.vy = -7;
+        player.vx = player.dir * -3;
+        playSound(120,"sawtooth",0.3);
+        if(lives <= 0){
+          gameOver = true;
+          playSound(90,"sawtooth",0.5);
+        }
+      }
+    }
+  }
+  
+  if(player.y>600){
+    lives = 0;
+    gameOver = true;
+    playSound(90,"sawtooth",0.5);
+  }
+  
+  let targetCam=Math.max(0,player.x-(W/scale)*.35);
+  camera+=(targetCam-camera)*0.12;
+  
+  if(player.x>=activeLevel.goalX-20){
+    won=true;
+    playSound(580,"sine",0.4);
+    if(score > highScore){
+      highScore = score;
+    }
+    if(currentLevelIdx >= unlockedLevel && currentLevelIdx < LEVELS.length - 1){
+      unlockedLevel = currentLevelIdx + 1;
+    }
+    saveData();
+  }
+}
+
+function drawUI(){
+  if(gameState!=="PLAYING")return;
+  ctx.fillStyle = activeLevel.dark ? "#ecf0f1" : "#1e293b";
+  ctx.font="bold 20px Arial";
+  ctx.fillText("⭐ PUAN: "+score,20,35);
+  ctx.fillText("❤️ " + "❤️".repeat(Math.max(0, lives)),20,62);
+  
+  ctx.font="bold 14px Arial";
+  ctx.fillText(activeLevel.name.toUpperCase(),20,88);
+  
+  if(gameOver||won){
+    ctx.fillStyle="rgba(0,0,0,0.82)";ctx.fillRect(0,0,W,H);
+    ctx.textAlign="center";ctx.fillStyle="white";
+    ctx.font="bold 32px Arial";
+    let titleText = won ? (currentLevelIdx === LEVELS.length - 1 ? "👑 TÜM OYUNU BİTİRDİN!" : "🎉 HARİKA! BÖLÜM BİTTİ!") : "💀 OYUN BİTTİ!";
+    ctx.fillText(titleText,W/2,H/2-30);
+    ctx.font="18px Arial";
+    ctx.fillStyle="#f1c40f";
+    ctx.fillText("Toplam Skor: "+score,W/2,H/2+5);
+    ctx.fillStyle="#cbd5e1";
+    ctx.fillText("En Yüksek Skor: "+highScore,W/2,H/2+35);
+    ctx.fillStyle="white";
+    let msg = won && currentLevelIdx < LEVELS.length - 1
+      ? "Sonraki bölüme geçmek için tıkla"
+      : "Tekrar oynamak için tıkla";
+    ctx.fillText(msg,W/2,H/2+75);
+    ctx.textAlign="left";
+  }
+}
+
+function loop(){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,W,H);
+  update();
+  drawBackground();
+  ctx.save();
+  ctx.scale(scale,scale);
+  drawWorld();
+  drawPlayer();
+  ctx.restore();
+  drawUI();
+  requestAnimationFrame(loop);
+}
+
+resetGame();
+showStartScreen();
+loop();
+</script>
+</body>
+</html>
